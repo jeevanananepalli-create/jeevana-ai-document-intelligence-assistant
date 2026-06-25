@@ -1,0 +1,28 @@
+/* Minimal global styles for the Phase 1 foundation. Real styling/design system
+   (e.g. Tailwind + shadcn/ui, per the architecture docs) is added later. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+  padding: 2rem;
+}
+
+main {
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+nav a {
+  margin-right: 1rem;
+}

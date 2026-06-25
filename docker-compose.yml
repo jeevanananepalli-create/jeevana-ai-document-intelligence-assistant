@@ -1,0 +1,53 @@
+# Development environment.
+#
+# `docker compose up` starts the whole backend stack with one command, so every
+# contributor runs the same PostgreSQL version and the same app image. Later
+# phases add Redis, Celery workers, and the frontend as new services here.
+#
+#   db      - PostgreSQL 16 with the pgvector extension available.
+#   backend - the FastAPI app, rebuilt from ./backend.
+
+services:
+  db:
+    # pgvector/pgvector is a drop-in superset of the official postgres:16 image.
+    # We use it now so we never have to swap the image when vector search lands
+    # in a later phase; the extension simply stays unused until then.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: docintell
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume so data survives `docker compose down` (but not `down -v`).
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # The backend waits until this reports healthy before starting, so it
+      # never tries to connect to a database that isn't ready yet.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d docintell"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    # Load non-secret defaults from .env, then override the DB host: inside the
+    # compose network the database is reachable as "db", not "localhost".
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/docintell
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/docintell
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Mount the source for live-reload during development.
+    volumes:
+      - ./backend/app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  pgdata:

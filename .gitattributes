@@ -1,0 +1,4 @@
+# Normalize line endings: store text files with LF in the repo, and let each
+# machine check them out with its native endings. Keeps diffs clean when the
+# repo moves between Windows and macOS/Linux laptops.
+* text=auto eol=lf

@@ -1,0 +1,93 @@
+# Continuous Integration.
+#
+# Runs on every push and pull request. The job is a gate: if linting, type
+# checking, or tests fail, the red X on the commit/PR tells everyone the change
+# is not safe to merge — automatically, before a human reviews it. This is how
+# teams keep `main` always-green and catch regressions the moment they appear.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+# Cancel superseded runs on the same branch to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint, type-check, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check app tests migrations
+
+      - name: Format check (ruff)
+        run: ruff format --check app tests migrations
+
+      - name: Type check (mypy)
+        run: mypy app
+
+      - name: Test (pytest + coverage gate)
+        # Fail the build if coverage drops below 80%, enforcing the project's
+        # testing standard automatically rather than relying on reviewer memory.
+        run: pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+
+  frontend:
+    name: Frontend (lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        # Validates the Dockerfile compiles and the image assembles. We don't
+        # push it — this is purely a "does it build?" gate.
+        run: docker build -t document-intelligence-api:ci ./backend
