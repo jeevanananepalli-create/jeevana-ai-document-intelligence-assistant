@@ -120,6 +120,37 @@ class Settings(BaseSettings):
         description="Comma-separated list of browser origins allowed to call the API.",
     )
 
+    # --- Document storage --------------------------------------------------
+    storage_path: str = Field(
+        default="./uploads",
+        description="Base directory where uploaded files are stored (local backend).",
+    )
+    max_file_size_mb: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum accepted upload size, in megabytes.",
+    )
+
+    # --- Async processing / embeddings (Phase 2.4) -------------------------
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis URL used as the Celery broker and result backend.",
+    )
+    embedding_model: str = Field(
+        default="all-MiniLM-L6-v2",
+        description="sentence-transformers model used to embed document chunks.",
+    )
+    embedding_dimension: int = Field(
+        default=384,
+        ge=1,
+        description="Vector width the embedding model produces (must match the DB column).",
+    )
+
+    @property
+    def max_file_size_bytes(self) -> int:
+        """The max upload size expressed in bytes, for direct length checks."""
+        return self.max_file_size_mb * 1024 * 1024
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse the comma-separated CORS origins into a clean list."""
