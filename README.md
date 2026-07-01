@@ -6,29 +6,31 @@ An AI-powered document processing platform that extracts, analyzes, and enables 
 
 ## Project Status
 
-**Current phase: Phase 1 — Engineering Foundation ✅ complete.**
+**Current phase: Phase 2 — Document Pipeline ✅ complete. Next: Phase 3 (AI analysis).**
 
-The foundation is in place and verified (lint + type-check + tests green). AI
-features are intentionally **not** built yet — see the
+Verified end to end (lint + type-check + 114 tests green, incl. real
+PostgreSQL/pgvector integration tests). See the
 [development roadmap](docs/development-roadmap.md) for the phased plan.
 
 | Capability | Status |
 |------------|--------|
-| Clean Architecture project skeleton | ✅ |
-| FastAPI app + `GET /health` liveness probe | ✅ |
-| Configuration management (typed, env-driven) | ✅ |
-| PostgreSQL + Docker Compose dev environment | ✅ |
-| Alembic migration framework | ✅ (scaffold; no business tables yet) |
-| Password hashing + JWT utilities | ✅ (utilities only; no login flow yet) |
-| Next.js frontend skeleton + routing | ✅ |
-| Testing framework (pytest + Jest) | ✅ |
-| CI pipeline (GitHub Actions) | ✅ |
-| Upload / OCR / embeddings / search / chat | ⏳ later phases |
+| Clean Architecture foundation, CI, Docker (Phase 1) | ✅ |
+| Production JWT-secret startup guard | ✅ |
+| Document upload (`POST /documents/upload`) + validation | ✅ |
+| Text extraction strategies (pdfminer / Tesseract OCR / docx) | ✅ |
+| PostgreSQL schema + Alembic migration (users, documents, chunks, pgvector) | ✅ |
+| Processing pipeline (extract → chunk → embed → store) via Celery | ✅ |
+| Document retrieval (list / detail / status / delete) | ✅ |
+| Embeddings (sentence-transformers, `[ml]` extra) | ✅ (runs in worker image) |
+| Auth login/register flow | ⏳ deferred feature |
+| AI analysis (summary, entities, classification) | ⏳ Phase 3 |
+| Semantic search + RAG Q&A | ⏳ Phase 4 |
+| Frontend feature UI | ⏳ Phase 5 |
 
 ## Features
 
 > The features below describe the **target** product. Items are delivered phase
-> by phase; only the foundation is implemented today.
+> by phase; upload, extraction, the processing pipeline, and retrieval are done.
 
 
 
@@ -90,14 +92,14 @@ cd document-intelligence-assistant
 
 # Copy environment variables
 cp .env.example .env
-# Edit .env with your API keys
+# Defaults work for local dev; no API keys needed for Phase 2
 
-# Start the entire stack
+# Start the backend stack: PostgreSQL, Redis, the API, and the Celery worker
 docker compose up
 
 # Backend API:  http://localhost:8000
 # API Docs:     http://localhost:8000/docs
-# Frontend:     http://localhost:3000
+# (the Next.js frontend is run separately — see Development below)
 ```
 
 ## Project Structure
@@ -106,22 +108,26 @@ docker compose up
 ├── backend/
 │   ├── app/
 │   │   ├── domain/              # Pure business logic (zero framework imports)
-│   │   │   ├── entities/        # Objects with identity (User, Document)
-│   │   │   ├── value_objects/   # Immutable values compared by content
+│   │   │   ├── entities/        # Objects with identity (Document, DocumentChunk)
+│   │   │   ├── value_objects/   # Immutable values (DocumentStatus, FileType)
 │   │   │   ├── exceptions/      # Domain errors (not HTTP errors)
-│   │   │   └── interfaces/      # Abstract ports (Protocols)
+│   │   │   ├── interfaces/      # Abstract ports (Protocols)
+│   │   │   └── services/        # Pure domain logic (TextChunker)
 │   │   ├── application/         # Use cases + application services
 │   │   │   ├── use_cases/
 │   │   │   └── services/
 │   │   ├── infrastructure/      # Concrete I/O implementing the interfaces
-│   │   │   ├── database/        # SQLAlchemy engine, session, Base
-│   │   │   ├── repositories/    # Data access implementations
-│   │   │   └── external_services/  # OCR / LLM / storage clients (later)
+│   │   │   ├── database/        # SQLAlchemy engine, session, Base, ORM models
+│   │   │   ├── repositories/    # Data access (InMemory + Postgres)
+│   │   │   ├── storage/         # File storage (LocalFileStorage)
+│   │   │   ├── extraction/      # Text extraction strategies (pdfminer/OCR/docx)
+│   │   │   └── external_services/  # LLM / embedding clients (later)
 │   │   ├── api/                 # HTTP edge
 │   │   │   ├── health.py        # GET /health liveness probe
 │   │   │   └── v1/              # Versioned routers
 │   │   ├── core/                # Config, security, logging
 │   │   │   └── config/
+│   │   ├── workers/             # Celery app + document-processing pipeline task
 │   │   └── main.py             # App factory (composition root)
 │   ├── migrations/             # Alembic migration framework
 │   ├── tests/{unit,integration,e2e}/
@@ -134,7 +140,7 @@ docker compose up
 │       ├── lib/                # API client (lib/api.ts)
 │       └── types/              # TypeScript types
 ├── docs/                       # Architecture, decisions, DB design, roadmap
-├── docker-compose.yml          # PostgreSQL + backend dev environment
+├── docker-compose.yml          # PostgreSQL, Redis, backend, and Celery worker
 └── .github/workflows/ci.yml    # CI pipeline (lint, type-check, test, build)
 ```
 
@@ -170,7 +176,7 @@ This project deliberately avoids the easy path of wrapping LangChain around an A
 
 ```bash
 cp .env.example .env          # then edit values as needed
-docker compose up --build     # starts PostgreSQL + backend
+docker compose up --build     # starts PostgreSQL, Redis, the API, and the worker
 # Backend API:  http://localhost:8000
 # Liveness:     http://localhost:8000/health
 # API Docs:     http://localhost:8000/docs

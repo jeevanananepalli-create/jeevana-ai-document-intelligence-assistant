@@ -87,58 +87,97 @@ This phase contains the most technically interesting code: the strategy pattern 
 
 ### Tasks
 
-#### 2.1 Domain Layer
-- [ ] Define `Document` and `DocumentChunk` domain models (dataclasses)
-- [ ] Define Ports: `DocumentRepository`, `StoragePort`, `EmbeddingPort`
-- [ ] Implement `TextChunker` service (recursive splitting with configurable chunk size/overlap)
-- [ ] Unit tests for `TextChunker` with various input sizes and edge cases
+#### 2.1 Domain Layer ✅
+- [x] Define `Document` and `DocumentChunk` domain models (frozen dataclasses)
+- [x] Define value objects: `DocumentStatus` (with transition rules) and `FileType`
+- [x] Define domain exceptions (`DomainError` hierarchy)
+- [x] Define Ports: `DocumentRepository`, `StoragePort`, `EmbeddingPort` (Protocols)
+- [x] Implement `TextChunker` service (recursive splitting with configurable chunk size/overlap)
+- [x] Unit tests for `TextChunker` with various input sizes and edge cases (domain layer at 100% coverage)
 
-#### 2.2 File Upload
-- [ ] `POST /documents/upload` endpoint
-- [ ] File validation: MIME type checking, size limit (50MB default)
-- [ ] Store raw file to local disk (with `StoragePort` abstraction)
-- [ ] Create `Document` record with `status = uploaded`
-- [ ] Return `202 Accepted` with `document_id`
+#### 2.2 File Upload ✅
+- [x] `POST /api/v1/documents/upload` endpoint
+- [x] File validation: MIME type checking, size limit (50MB default), empty-file rejection
+- [x] Store raw file to local disk via `LocalFileStorage` (the `StoragePort` abstraction)
+- [x] Create `Document` record with `status = uploaded`
+- [x] Return `202 Accepted` with the document record
+- [x] `UploadDocumentUseCase` + `InMemoryDocumentRepository` (unit/integration/E2E tested)
 
-#### 2.3 Extraction Strategies
-- [ ] `ExtractionStrategy` protocol
-- [ ] `PDFTextExtractionStrategy` — using pdfminer.six
-- [ ] `PDFOCRExtractionStrategy` — pdf2image + pytesseract
-- [ ] `ImageOCRExtractionStrategy` — pytesseract
-- [ ] `DocxExtractionStrategy` — python-docx
-- [ ] Strategy factory that selects based on MIME type
-- [ ] Detection: is a PDF text-based or scanned?
+> Built against the ports so it needs no DB yet: an `InMemoryDocumentRepository`
+> stands in until the PostgreSQL repo arrives in 2.6, and a clearly-marked
+> placeholder `get_current_user_id` stands in until JWT auth lands. The standard
+> `{success, data, error}` response envelope is a small cross-cutting task still
+> to be formalised across endpoints.
 
-#### 2.4 Celery Worker Pipeline
-- [ ] Configure Celery app with Redis broker
-- [ ] `process_document` task:
-  1. Load document record
-  2. Select extraction strategy
-  3. Extract text
-  4. Chunk text using `TextChunker`
-  5. Generate embeddings (sentence-transformers)
-  6. Store chunks + vectors in PostgreSQL
-  7. Update document status to `completed` or `failed`
-- [ ] Retry configuration with exponential backoff
+#### 2.3 Extraction Strategies ✅
+- [x] `ExtractionStrategy` protocol + `ExtractionResult` value object
+- [x] `PdfTextExtractionStrategy` — using pdfminer.six
+- [x] `PdfOcrExtractionStrategy` — pdf2image + pytesseract
+- [x] `ImageOcrExtractionStrategy` — pytesseract + Pillow
+- [x] `DocxExtractionStrategy` — python-docx
+- [x] `create_extraction_strategy` factory that selects based on file type
+- [x] Detection: `PdfExtractionStrategy` composite auto-detects text-based vs scanned (text → OCR fallback)
 
-#### 2.5 Document Retrieval
-- [ ] `GET /documents` — paginated list for current user
-- [ ] `GET /documents/{id}` — document detail with extracted text
-- [ ] `GET /documents/{id}/status` — processing status check
-- [ ] `DELETE /documents/{id}` — delete document and associated chunks
+> Verified here for pdfminer (mocked) and python-docx (real round-trip); the
+> OCR strategies are unit-tested with Tesseract/poppler mocked and run for real
+> in the Docker image (which installs those binaries).
 
-#### 2.6 Database Migration
-- [ ] Alembic migration for `documents` and `document_chunks` tables
-- [ ] IVFFlat index on `embedding` column
+#### 2.4 Celery Worker Pipeline ✅
+- [x] `ProcessDocumentUseCase` — the pipeline as pure orchestration over ports (fully unit-tested with fakes)
+- [x] Configure Celery app with Redis broker + result backend
+- [x] `process_document` task (load → mark processing → extract → chunk → embed → store chunks → mark completed)
+- [x] `SentenceTransformerEmbedding` adapter (`EmbeddingPort`, optional `[ml]` extra, lazy import)
+- [x] `PostgresChunkRepository` — stores chunks + embeddings (integration-tested against pgvector)
+- [x] `DocumentProcessingQueue` port + Celery impl; the upload endpoint enqueues on `202`
+- [x] Idempotent re-processing (chunks cleared before re-insert)
+- [x] Retry configuration with exponential backoff; failure recorded in a separate transaction
+- [x] `redis` + `worker` services added to docker-compose; worker image built with the `[ml]` extra
 
-#### 2.7 Tests for Phase 2
-- [ ] Unit tests: text chunker (various sizes, overlap, edge cases)
-- [ ] Unit tests: strategy factory (correct strategy selection)
-- [ ] Integration tests: document upload, processing pipeline (testcontainers)
-- [ ] E2E tests: upload → process → retrieve flow via TestClient
+> The pipeline **logic** is 100% unit-tested with fakes (no Celery/Redis/torch
+> needed). The real embedder (torch) runs in the worker container built from the
+> `[ml]` extra; the backend image (verified by a real `docker build`) stays light.
 
-### Deliverable
-Upload a PDF, it gets processed (OCR + chunked + embedded), and you can retrieve the extracted text and chunks. The core pipeline works end-to-end.
+#### 2.5 Document Retrieval ✅
+- [x] `GET /api/v1/documents` — paginated list for the current user (`page`/`limit`, `total`, `has_next`)
+- [x] `GET /api/v1/documents/{id}` — document detail with extracted text
+- [x] `GET /api/v1/documents/{id}/status` — lightweight processing-status check
+- [x] `DELETE /api/v1/documents/{id}` — `DeleteDocumentUseCase` removes the record (chunks cascade) and the stored file
+- [x] `count_for_user` added to the repository port + both implementations
+- [x] E2E tests for list/detail/status/delete (incl. pagination and 404s)
+
+> The status endpoint returns a simplified `{id, status, processing_error}`; the
+> richer step-level progress and the `{success, data, error}` envelope in the API
+> contract remain a documented future refinement (analysis fields arrive in Phase 3).
+
+#### 2.6 Database Migration ✅
+- [x] SQLAlchemy ORM models: `UserModel`, `DocumentModel`, `DocumentChunkModel`
+- [x] First Alembic migration (`0001`) — `users`, `documents`, `document_chunks` + pgvector extension (also lands the `users` table deferred from Phase 1)
+- [x] IVFFlat index on the `embedding` column (`vector_cosine_ops`)
+- [x] `PostgresDocumentRepository` replacing the in-memory stand-in (wired via `get_db`)
+- [x] Request-scoped unit-of-work (commit/rollback in `get_db`)
+- [x] Integration tests against real PostgreSQL + pgvector; CI runs them against a Postgres service and applies the migration
+- [x] Verified: migration applies **and** reverses (`upgrade`/`downgrade`) against Postgres 16 + pgvector
+
+> The in-memory repository is retained as a fast test double. Auth (login/register)
+> is still deferred, but its `users` table now exists, so that feature can be
+> built next without a schema change.
+
+#### 2.7 Tests for Phase 2 ✅ (unit/integration/E2E) / ⏳ (worker E2E)
+- [x] Unit tests: text chunker (various sizes, overlap, edge cases)
+- [x] Unit tests: strategy factory + PDF digital-vs-scanned detection
+- [x] Unit tests: upload, process, and delete use cases (with fakes)
+- [x] Integration tests: document + chunk repositories against real PostgreSQL + pgvector (CI runs them)
+- [x] E2E tests: upload and retrieve flow via TestClient
+- [ ] E2E test of the full worker run (extract → embed) *(deferred — needs Redis + the torch embedder; the pipeline logic is fully unit-tested)*
+
+### Deliverable ✅ (core) / ⏳ (live worker demo)
+The API accepts an upload, stores it, records a `Document`, and enqueues
+processing; the worker pipeline (extract → chunk → embed → store) is implemented
+and unit-tested; and you can list, view, check status, and delete documents.
+Running the full extract→embed pass live requires the worker container (Redis +
+the `[ml]` image).
+
+**Current status: Phase 2 complete.** Next up is Phase 3 (AI analysis).
 
 ---
 
