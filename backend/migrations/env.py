@@ -19,11 +19,8 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
+from app.infrastructure.database import models  # noqa: F401  (registers tables on Base.metadata)
 from app.infrastructure.database.base import Base
-
-# IMPORTANT (later phases): import model modules here so their tables register
-# on Base.metadata and autogenerate can see them, e.g.:
-#   from app.infrastructure.database import models  # noqa: F401
 
 config = context.config
 

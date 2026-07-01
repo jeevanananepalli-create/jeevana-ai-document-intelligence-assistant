@@ -66,6 +66,15 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     The session is opened when the request starts and guaranteed to close when
     it ends, even if the handler raises. Each request gets its own session, so
     sessions are never shared across concurrent requests.
+
+    This is a unit-of-work boundary: changes are committed once the request
+    handler returns successfully, and rolled back if it raises. Repositories
+    therefore only stage changes (add/flush) and never commit themselves.
     """
     async with SessionLocal() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise

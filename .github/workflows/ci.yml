@@ -25,6 +25,23 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A real PostgreSQL (with pgvector) so integration tests and the migration
+    # run against the same database the app uses.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: docintell
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d docintell"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/docintell
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@localhost:5432/docintell
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +64,10 @@ jobs:
 
       - name: Type check (mypy)
         run: mypy app
+
+      - name: Apply database migrations
+        # Validates the Alembic migration applies cleanly to a real database.
+        run: alembic upgrade head
 
       - name: Test (pytest + coverage gate)
         # Fail the build if coverage drops below 80%, enforcing the project's
