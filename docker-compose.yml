@@ -1,17 +1,17 @@
 # Development environment.
 #
 # `docker compose up` starts the whole backend stack with one command, so every
-# contributor runs the same PostgreSQL version and the same app image. Later
-# phases add Redis, Celery workers, and the frontend as new services here.
+# contributor runs the same versions. The frontend is added as a service in a
+# later phase.
 #
-#   db      - PostgreSQL 16 with the pgvector extension available.
-#   backend - the FastAPI app, rebuilt from ./backend.
+#   db      - PostgreSQL 16 with the pgvector extension.
+#   redis   - Celery broker + result backend.
+#   backend - the FastAPI app.
+#   worker  - the Celery worker running the document-processing pipeline.
 
 services:
   db:
     # pgvector/pgvector is a drop-in superset of the official postgres:16 image.
-    # We use it now so we never have to swap the image when vector search lands
-    # in a later phase; the extension simply stays unused until then.
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: postgres
@@ -30,24 +30,60 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
-    # Load non-secret defaults from .env, then override the DB host: inside the
-    # compose network the database is reachable as "db", not "localhost".
+    # Load non-secret defaults from .env, then override the hosts: inside the
+    # compose network, services are reachable by their service name, not localhost.
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/docintell
       DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/docintell
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
-    # Mount the source for live-reload during development.
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend/app:/app/app
+      - uploads:/app/uploads
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    build:
+      context: ./backend
+      # The worker needs the embedding model, so build with the ML extra.
+      args:
+        INSTALL_ML: "true"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/docintell
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/docintell
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Share the uploaded-files volume so the worker can read what the API stored.
+    volumes:
+      - uploads:/app/uploads
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
 
 volumes:
   pgdata:
+  uploads:

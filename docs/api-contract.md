@@ -503,6 +503,7 @@ Every document moves through a small, well-defined state machine. These four val
 
 **Valid transitions** (anything else is a bug):
 - `uploaded → processing` (worker starts)
+- `uploaded → failed` (processing failed before/at the start, e.g. the file could not be read)
 - `processing → completed` (all steps succeed)
 - `processing → failed` (any step errors)
 - `failed → processing` (via `reanalyze`, when text already exists)

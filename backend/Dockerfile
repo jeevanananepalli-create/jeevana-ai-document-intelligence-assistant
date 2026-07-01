@@ -27,11 +27,14 @@ RUN apt-get update \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install dependencies first (declared in pyproject.toml). This layer is cached
-# and only rebuilds when dependencies change, not on every code edit.
-COPY pyproject.toml ./
-COPY README.md ./
-RUN pip install --upgrade pip && pip install .
+# Install the project into the venv. The heavy embedding stack (torch) is opt-in
+# via the INSTALL_ML build arg, so the API image stays light and only the worker
+# image pulls it in.
+ARG INSTALL_ML=false
+COPY pyproject.toml README.md ./
+COPY app ./app
+RUN pip install --upgrade pip \
+    && if [ "$INSTALL_ML" = "true" ]; then pip install ".[ml]"; else pip install "."; fi
 
 # ---- Stage 2: runtime -----------------------------------------------------
 FROM python:3.12-slim AS runtime
@@ -42,9 +45,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# libpq is the runtime library psycopg2 links against (no compiler needed here).
+# Runtime system libraries:
+#   libpq5         - what psycopg2 links against (database driver)
+#   tesseract-ocr  - the OCR engine used by pytesseract (image / scanned-PDF text)
+#   poppler-utils  - PDF rendering used by pdf2image (scanned-PDF -> images)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends \
+        libpq5 \
+        tesseract-ocr \
+        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the ready-built virtualenv from the builder stage.
