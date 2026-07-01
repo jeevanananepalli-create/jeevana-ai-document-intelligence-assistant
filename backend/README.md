@@ -1,7 +1,9 @@
 # Document Intelligence API
 
 FastAPI backend for the AI Document Intelligence Assistant, built with Clean
-Architecture.
+Architecture. See the repository root [README](../README.md) for the full
+project overview and the [docs](../docs) for architecture, API contract, and
+roadmap.
 
 The top-level repository README covers the full project overview, setup, and
 development workflow. This backend README exists so packaging and container
@@ -12,12 +14,12 @@ referenced by `pyproject.toml`.
 
 ```text
 app/
-|-- domain/          # Pure business logic (entities, value objects, ports)
-|-- application/     # Use cases
-|-- infrastructure/  # DB, storage, extraction, embeddings, repositories
-|-- api/             # FastAPI routers + dependencies
-|-- core/            # Config, security, logging
-|-- workers/         # Celery task pipeline
+├── domain/          # Pure business logic (entities, value objects, ports)
+├── application/     # Use cases
+├── infrastructure/  # DB, storage, extraction, embeddings, repositories
+├── api/             # FastAPI routers + dependencies
+├── core/            # Config, security, logging
+└── workers/         # Celery task pipeline
 migrations/          # Alembic migrations
 tests/               # unit / integration / e2e
 ```

@@ -5,17 +5,18 @@
 tested there); this module is about wiring, transactions, and retries.
 
 Event-loop / engine note (important):
-Each task runs its coroutine via `asyncio.run`, which creates a *new* event loop
+Each task runs its coroutine via `asyncio.run`, which creates a new event loop
 per task. Async database connections are bound to the loop that created them, so
 a process-wide pooled engine would hand out connections from a dead loop on the
 next task. We therefore build a fresh engine with `NullPool` per task and dispose
-it afterwards — the correct pattern for async SQLAlchemy under Celery's prefork.
+it afterwards, which is the correct pattern for async SQLAlchemy under Celery's
+prefork model.
 
 Transaction/failure model:
 - The pipeline runs in one session, committed on success.
 - On failure we roll back partial work and re-raise so Celery's retry policy
   (exponential backoff) kicks in. We only persist the `failed` status on the
-  *final* attempt, so a document is not shown as failed while retries remain.
+  final attempt, so a document is not shown as failed while retries remain.
 """
 
 from __future__ import annotations
