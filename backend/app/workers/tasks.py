@@ -4,28 +4,52 @@
 `ProcessDocumentUseCase`. All the interesting logic lives in the use case (and is
 tested there); this module is about wiring, transactions, and retries.
 
+Event-loop / engine note (important):
+Each task runs its coroutine via `asyncio.run`, which creates a *new* event loop
+per task. Async database connections are bound to the loop that created them, so
+a process-wide pooled engine would hand out connections from a dead loop on the
+next task. We therefore build a fresh engine with `NullPool` per task and dispose
+it afterwards — the correct pattern for async SQLAlchemy under Celery's prefork.
+
 Transaction/failure model:
 - The pipeline runs in one session, committed on success.
-- On failure we roll back any partial work, then record the `failed` status in a
-  separate session so the failure is durably visible, and re-raise so Celery's
-  retry policy (exponential backoff) kicks in.
+- On failure we roll back partial work and re-raise so Celery's retry policy
+  (exponential backoff) kicks in. We only persist the `failed` status on the
+  *final* attempt, so a document is not shown as failed while retries remain.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
+
+from sqlalchemy import NullPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.application.use_cases.process_document import ProcessDocumentUseCase
 from app.core.config import get_settings
 from app.domain.services.text_chunker import TextChunker
-from app.infrastructure.database.session import SessionLocal
 from app.infrastructure.external_services.embeddings import SentenceTransformerEmbedding
 from app.infrastructure.repositories.postgres import PostgresDocumentRepository
 from app.infrastructure.repositories.postgres_chunk import PostgresChunkRepository
 from app.infrastructure.storage.local_storage import LocalFileStorage
 from app.workers.celery_app import celery_app
+
+
+@asynccontextmanager
+async def _worker_session() -> AsyncIterator[AsyncSession]:
+    """Yield a session from a fresh, non-pooled engine bound to the current loop."""
+    engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 @celery_app.task(
@@ -37,14 +61,15 @@ from app.workers.celery_app import celery_app
     retry_jitter=True,
     max_retries=3,
 )
-def process_document(self: object, document_id: str, user_id: str) -> None:  # noqa: ARG001
+def process_document(self: Any, document_id: str, user_id: str) -> None:
     """Celery entry point. Runs the async pipeline to completion."""
-    asyncio.run(_process(UUID(document_id), UUID(user_id)))
+    is_final_attempt = self.request.retries >= self.max_retries
+    asyncio.run(_process(UUID(document_id), UUID(user_id), record_failure=is_final_attempt))
 
 
-async def _process(document_id: UUID, user_id: UUID) -> None:
+async def _process(document_id: UUID, user_id: UUID, *, record_failure: bool) -> None:
     settings = get_settings()
-    async with SessionLocal() as session:
+    async with _worker_session() as session:
         use_case = ProcessDocumentUseCase(
             documents=PostgresDocumentRepository(session),
             chunks=PostgresChunkRepository(session),
@@ -59,13 +84,16 @@ async def _process(document_id: UUID, user_id: UUID) -> None:
             await session.commit()
         except Exception as exc:
             await session.rollback()
-            await _record_failure(document_id, user_id, str(exc))
+            # Only mark failed once retries are exhausted, so the document is not
+            # flapping to "failed" while transient errors are still being retried.
+            if record_failure:
+                await _record_failure(document_id, user_id, str(exc))
             raise
 
 
 async def _record_failure(document_id: UUID, user_id: UUID, error: str) -> None:
     """Persist a `failed` status in its own transaction."""
-    async with SessionLocal() as session:
+    async with _worker_session() as session:
         repository = PostgresDocumentRepository(session)
         document = await repository.get(document_id, user_id)
         if document is not None:
