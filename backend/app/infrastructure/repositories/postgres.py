@@ -119,16 +119,51 @@ class PostgresDocumentRepository:
     async def list_for_user(
         self, user_id: UUID, *, limit: int = 20, offset: int = 0
     ) -> list[Document]:
+        """Return a page of documents as a LIGHT PROJECTION.
+
+        Deliberately selects only the columns list views need. `extracted_text`
+        and the analysis fields can be megabytes per row; loading them for a
+        20-item list that displays neither is wasted database and network I/O.
+        The returned entities carry `extracted_text=None` / `analysis=None` —
+        callers that need the full document fetch it by id via `get()`.
+        """
         stmt = (
-            select(DocumentModel)
+            select(
+                DocumentModel.id,
+                DocumentModel.user_id,
+                DocumentModel.original_filename,
+                DocumentModel.file_type,
+                DocumentModel.file_size_bytes,
+                DocumentModel.storage_path,
+                DocumentModel.status,
+                DocumentModel.page_count,
+                DocumentModel.processing_error,
+                DocumentModel.created_at,
+                DocumentModel.updated_at,
+            )
             .where(DocumentModel.user_id == user_id)
             # id as a tiebreaker makes ordering deterministic when timestamps tie.
             .order_by(DocumentModel.created_at.desc(), DocumentModel.id.desc())
             .limit(limit)
             .offset(offset)
         )
-        models = (await self._session.execute(stmt)).scalars().all()
-        return [_to_domain(model) for model in models]
+        rows = (await self._session.execute(stmt)).all()
+        return [
+            Document(
+                id=row.id,
+                user_id=row.user_id,
+                original_filename=row.original_filename,
+                file_type=FileType(row.file_type),
+                file_size_bytes=row.file_size_bytes,
+                storage_path=row.storage_path,
+                status=DocumentStatus(row.status),
+                page_count=row.page_count,
+                processing_error=row.processing_error,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
 
     async def update(self, document: Document) -> Document:
         stmt = select(DocumentModel).where(DocumentModel.id == document.id)
