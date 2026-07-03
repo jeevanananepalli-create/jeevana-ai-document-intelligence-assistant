@@ -100,6 +100,33 @@ async def test_count_for_user(db_session: AsyncSession) -> None:
     assert await repo.count_for_user(other_user) == 1
 
 
+async def test_analysis_round_trips_through_flattened_columns(db_session: AsyncSession) -> None:
+    from app.domain.value_objects.document_analysis import (
+        DocumentAnalysis,
+        ExtractedEntity,
+    )
+
+    repo = PostgresDocumentRepository(db_session)
+    user_id = await _seed_user(db_session)
+    document = await repo.add(_make_document(user_id=user_id))
+
+    analysis = DocumentAnalysis(
+        summary="An agreement between Acme Corp and Beta LLC.",
+        document_type="contract",
+        language="en",
+        confidence=0.87,
+        entities=(
+            ExtractedEntity(name="Acme Corp", type="organization"),
+            ExtractedEntity(name="2026-01-15", type="date"),
+        ),
+    )
+    await repo.update(document.with_analysis(analysis, updated_at=_NOW))
+
+    refetched = await repo.get(document.id, user_id)
+    assert refetched is not None
+    assert refetched.analysis == analysis  # full VO reconstructed from columns
+
+
 async def test_update_missing_document_is_noop(db_session: AsyncSession) -> None:
     repo = PostgresDocumentRepository(db_session)
     ghost = _make_document(user_id=uuid4())  # never persisted

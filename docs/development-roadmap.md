@@ -188,36 +188,43 @@ Add LLM-powered document analysis: summarization, entity extraction, and documen
 
 ### Tasks
 
-#### 3.1 LLM Port & Implementation
-- [ ] Define `LLMPort` protocol (structured output method)
-- [ ] Implement `OpenAILLM` with structured output via Pydantic models
-- [ ] Define output schemas:
-  ```python
-  class DocumentAnalysis(BaseModel):
-      summary: str
-      key_entities: list[Entity]
-      document_type: Literal["contract", "research", "invoice", "report", "letter", "other"]
-      language: str
-      confidence: float
-  ```
+#### 3.1 LLM Port & Implementation ✅
+- [x] `DocumentAnalysis` + `ExtractedEntity` domain value objects (framework-free)
+- [x] `LLMPort` protocol — narrow contract: `analyze_document(text) -> DocumentAnalysis`
+- [x] `OpenAILLM` with structured output (`chat.completions.parse` + a Pydantic
+      schema constraining summary, entities, `document_type` Literal, language,
+      confidence 0–1) mapped into the domain VO
 
-#### 3.2 Analysis Use Case
-- [ ] `AnalyzeDocumentUseCase` — called after text extraction in the Celery pipeline
-- [ ] Send extracted text (or first N tokens if too long) to LLM
-- [ ] Store analysis results in `documents` table (summary, entities, document_type)
-- [ ] Handle LLM failures gracefully — document is still `completed` even if analysis fails
+#### 3.2 Analysis in the Pipeline ✅
+- [x] Analysis step added to `ProcessDocumentUseCase` after chunk storage
+      (implemented as an optional `analyzer` port on the existing pipeline use
+      case rather than a separate `AnalyzeDocumentUseCase` — one orchestrator
+      owns the document lifecycle)
+- [x] Extracted text truncated to `ANALYSIS_MAX_CHARS` before the LLM call
+- [x] Results stored on `documents` (summary, entities, document_type, language,
+      analysis_confidence) — migration `0002`, verified pristine + reversible
+- [x] LLM failures handled gracefully — logged, document still `completed`
+- [x] Analysis fully optional: no `OPENAI_API_KEY` → step skipped
 
-#### 3.3 API Endpoints
-- [ ] `GET /documents/{id}/analysis` — returns summary, entities, classification
-- [ ] Analysis data included in document detail response
+#### 3.3 API Endpoints ✅
+- [x] `GET /api/v1/documents/{id}/analysis` — summary, entities, classification
+      (404 with a distinct message when not yet analyzed)
+- [x] Analysis embedded in the document detail response (`analysis` field)
 
-#### 3.4 Tests
-- [ ] Unit tests: analysis use case with mocked LLM port
-- [ ] Unit tests: output schema validation
-- [ ] Integration tests: full pipeline including analysis step
+#### 3.4 Tests ✅
+- [x] Unit: pipeline analysis step with a fake LLM port (success, failure-tolerant,
+      disabled, empty-text skip, truncation)
+- [x] Unit: `OpenAILLM` adapter with a mocked client (mapping, refusal, prompt wiring)
+- [x] Unit: output schema validation (confidence bounds)
+- [x] Integration: analysis round-trips through the flattened Postgres columns
+- [x] E2E: analysis endpoint (200 / both 404 cases) and detail embedding
 
-### Deliverable
-Uploaded documents are automatically summarized, entities are extracted, and the document type is classified. All results are available via API.
+### Deliverable ✅
+Uploaded documents are automatically summarized, entities are extracted, and the
+document type is classified — when an OpenAI key is configured. All results are
+available via API. Without a key, the pipeline runs unchanged minus the analysis.
+
+**Current status: Phase 3 complete.** Next up is Phase 4 (semantic search + RAG Q&A).
 
 ---
 
@@ -228,45 +235,64 @@ Implement the RAG pipeline: semantic search across documents and natural languag
 
 ### Tasks
 
-#### 4.1 Semantic Search
-- [ ] `SemanticSearchUseCase`:
-  1. Embed user query
-  2. pgvector cosine similarity search across user's chunks
-  3. Return top-k results with similarity scores
-- [ ] `POST /search` endpoint (query string + optional filters)
-- [ ] Filter by document type, date range
-- [ ] Pagination for search results
+#### 4.1 Semantic Search ✅
+- [x] `SemanticSearchUseCase`: embed query → pgvector cosine search → top-k with scores
+- [x] `ChunkRepository.search_similar` — cosine distance ordered by the IVFFlat
+      index expression, ownership enforced in the JOIN, NULL embeddings excluded
+- [x] `POST /api/v1/search` (query + `top_k` + optional `document_ids` filter)
+- [x] Filter by specific documents; `top_k` bounded 1–20 at the API boundary
+      *(document-type/date-range filters and result pagination deferred — top-k
+      retrieval is inherently small, so pagination adds little)*
 
-#### 4.2 Document Q&A (RAG Pipeline)
-- [ ] `DocumentQAUseCase`:
-  1. Embed user question
-  2. Retrieve top-k relevant chunks (configurable, default k=5)
-  3. Construct prompt: system instructions + retrieved context + question
-  4. Call LLM with structured output
-  5. Return answer with source citations (chunk ID, document name, page number)
-- [ ] `POST /qa` endpoint (question + optional document_id filter)
-- [ ] Response schema:
-  ```python
-  class QAResponse(BaseModel):
-      answer: str
-      sources: list[SourceCitation]
-      confidence: float
-      model_used: str
-  ```
+#### 4.2 Document Q&A (RAG Pipeline) ✅
+- [x] `DocumentQAUseCase`: embed question → retrieve top-k (default 5) →
+      numbered-context prompt → LLM structured output → resolve citations
+- [x] `LLMPort.generate_answer` + `OpenAILLM` implementation (`_RagAnswerSchema`
+      with `used_source_indices` so only passages the model actually used are cited;
+      hallucinated indices dropped)
+- [x] Honesty guard: zero retrieved chunks → honest "no relevant information"
+      answer with confidence 0.0, LLM never called
+- [x] `POST /api/v1/qa/ask` (question + optional `document_ids`); returns
+      `answer, sources[], confidence, model_used, latency_ms`
+- [x] Clear `503` when no LLM is configured (Q&A requires `OPENAI_API_KEY`)
 
-#### 4.3 Query History
-- [ ] Store every Q&A interaction in `query_history` table
-- [ ] `GET /qa/history` — paginated query history
-- [ ] Track latency for performance monitoring
+#### 4.3 Query History ✅
+- [x] `query_history` table (migration `0003`, verified pristine + reversible)
+- [x] Every Q&A recorded (best-effort — a history failure never loses the answer)
+- [x] `GET /api/v1/qa/history` — paginated, newest first
+- [x] Latency (ms) and confidence tracked per interaction
 
-#### 4.4 Tests
-- [ ] Unit tests: RAG pipeline with mocked embedding + LLM ports
-- [ ] Unit tests: prompt construction logic
-- [ ] Integration tests: end-to-end Q&A flow
-- [ ] Test: source citations correctly reference chunks
+#### 4.4 Tests ✅
+- [x] Unit: RAG pipeline with fake embedding/LLM/history ports (happy path,
+      no-context honesty, hallucinated-citation dropping, history-failure tolerance)
+- [x] Unit: prompt construction (`format_context_passages` numbering)
+- [x] Integration: pgvector similarity math with handcrafted vectors —
+      ordering, ownership scoping, document filter, NULL-embedding exclusion
+- [x] Integration: query-history round trip
+- [x] E2E: search + Q&A + history endpoints (incl. validation and the 503 path)
+- [x] Test: source citations correctly reference the retrieved chunks
 
-### Deliverable
-Users can search across all their documents semantically and ask natural language questions with cited answers. The RAG pipeline is hand-built and every step is testable.
+### Deliverable ✅
+Users can search across all their documents semantically and ask natural language
+questions with cited answers. The RAG pipeline is hand-built — each step is a
+separate function behind a port, and every step is tested.
+
+**Current status: Phase 4 complete.** Backend feature work done through search/RAG;
+next is Phase 5 (frontend dashboard).
+
+#### Post-Phase-4 hardening review ✅
+A full-project test review (Phases 1–4) found and fixed:
+- [x] 🔴 **Upload race**: the Celery task was enqueued before the request's DB
+      commit, so a fast worker could look up a document that didn't exist yet.
+      Enqueue now happens via FastAPI `BackgroundTasks`, which run only after
+      the session dependency has committed.
+- [x] 🟡 **Readiness probe**: `GET /api/v1/health` implemented (database check;
+      always 200, load balancers read the `status` field).
+- [x] 🟡 **List performance**: `list_for_user` now selects a light column
+      projection — `extracted_text`/analysis (potentially MBs per row) are no
+      longer loaded for list views that don't display them.
+- [x] 🟡 **Security scanning**: `bandit` added to dev dependencies and CI
+      (one deliberate placeholder suppressed with justification).
 
 ---
 

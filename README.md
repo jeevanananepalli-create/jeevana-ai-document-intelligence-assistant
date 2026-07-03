@@ -6,10 +6,10 @@ An AI-powered document processing platform that extracts, analyzes, and enables 
 
 ## Project Status
 
-**Current phase: Phase 2 — Document Pipeline ✅ complete. Next: Phase 3 (AI analysis).**
+**Current phase: Phase 4 — Semantic Search & RAG Q&A ✅ complete. Next: Phase 5 (frontend dashboard).**
 
-Verified end to end (lint + type-check + 114 tests green, incl. real
-PostgreSQL/pgvector integration tests). See the
+Verified end to end (lint + type-check + security scan + 152 tests green, incl.
+real PostgreSQL/pgvector integration tests). See the
 [development roadmap](docs/development-roadmap.md) for the phased plan.
 
 | Capability | Status |
@@ -22,9 +22,10 @@ PostgreSQL/pgvector integration tests). See the
 | Processing pipeline (extract → chunk → embed → store) via Celery | ✅ |
 | Document retrieval (list / detail / status / delete) | ✅ |
 | Embeddings (sentence-transformers, `[ml]` extra) | ✅ (runs in worker image) |
+| AI analysis (summary, entities, classification via OpenAI structured output) | ✅ (optional — needs `OPENAI_API_KEY`) |
+| Semantic search (`POST /search`, pgvector cosine similarity) | ✅ |
+| RAG Q&A with citations (`POST /qa/ask`) + query history | ✅ (needs `OPENAI_API_KEY`) |
 | Auth login/register flow | ⏳ deferred feature |
-| AI analysis (summary, entities, classification) | ⏳ Phase 3 |
-| Semantic search + RAG Q&A | ⏳ Phase 4 |
 | Frontend feature UI | ⏳ Phase 5 |
 
 ## Features

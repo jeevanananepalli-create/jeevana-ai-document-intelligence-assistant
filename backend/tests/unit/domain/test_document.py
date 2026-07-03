@@ -96,3 +96,26 @@ def test_mark_failed_allowed_directly_from_uploaded() -> None:
     document = _make_document(DocumentStatus.UPLOADED)
     failed = document.mark_failed(updated_at=_T1, error="could not read file")
     assert failed.status is DocumentStatus.FAILED
+
+
+def test_with_analysis_attaches_results_without_touching_status() -> None:
+    from app.domain.value_objects.document_analysis import (
+        DocumentAnalysis,
+        ExtractedEntity,
+    )
+
+    document = _make_document(DocumentStatus.COMPLETED)
+    analysis = DocumentAnalysis(
+        summary="A summary.",
+        document_type="report",
+        language="en",
+        confidence=0.8,
+        entities=(ExtractedEntity(name="Jeevana", type="person"),),
+    )
+
+    enriched = document.with_analysis(analysis, updated_at=_T1)
+
+    assert enriched.analysis == analysis
+    assert enriched.status is DocumentStatus.COMPLETED  # unchanged
+    assert enriched.updated_at == _T1
+    assert document.analysis is None  # original untouched (immutability)

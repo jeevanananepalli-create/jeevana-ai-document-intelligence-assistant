@@ -283,7 +283,7 @@ these are **future** items, documented now so the path is clear.
 - [ ] Run multiple stateless backend instances behind a **load balancer** that
       polls `/health`; unhealthy instances are pulled from rotation. Stateless
       JWT auth means any instance can serve any request.
-- [ ] A **readiness probe** (`GET /api/v1/health`, _planned_) that also checks
+- [x] A **readiness probe** (`GET /api/v1/health`, implemented) that also checks
       the database/Redis before an instance receives traffic.
 - [ ] Redis + Celery workers (Phase 2) deployed as separate scalable services.
 

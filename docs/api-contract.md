@@ -471,6 +471,39 @@ The document's `status` transitions back to `processing` while re-analysis runs,
 
 ---
 
+### GET /api/v1/documents/{document_id}/analysis
+
+**Authenticated**
+
+Return just the AI analysis of a document (also embedded in the document detail
+response as the `analysis` field).
+
+**Response** `200 OK`:
+```json
+{
+  "summary": "A 12-page service agreement between Acme Corp and Beta LLC...",
+  "document_type": "contract",
+  "language": "en",
+  "confidence": 0.92,
+  "entities": [
+    { "name": "Acme Corp", "type": "organization" },
+    { "name": "2026-01-15", "type": "date" }
+  ]
+}
+```
+
+**Errors**:
+- `404 Not Found` — Document doesn't exist or belongs to another user
+- `404 Not Found` (distinct message) — Document exists but has no analysis yet
+  (still processing, AI analysis disabled, or the LLM step failed — the
+  document itself still completes in those cases)
+
+> **Note**: AI analysis is an optional enrichment. When `OPENAI_API_KEY` is not
+> configured, the pipeline skips this step entirely and documents complete with
+> extraction and embeddings only.
+
+---
+
 ## Document Processing States
 
 Every document moves through a small, well-defined state machine. These four values are the **single source of truth** for document state — the same enum is stored in the database (`documents.status`, see [database-design.md](database-design.md)) and returned by every document endpoint.
@@ -774,50 +807,36 @@ balancers poll. It is implemented now, in the Phase 1 foundation.
 
 ---
 
-### GET /api/v1/health  *(readiness — future)*
+### GET /api/v1/health  *(readiness — implemented)*
 
 **Public** — No authentication required.
 
-A richer **readiness** probe: "are my dependencies reachable so I can actually
-serve work?" It checks the database, Redis, and Celery. This is added in a later
-phase once those dependencies exist; it complements (does not replace) the
-liveness probe above.
+A **readiness** probe: "are my dependencies reachable so I can actually serve
+work?" It complements (does not replace) the liveness probe above. Today it
+checks the database — the only dependency the API needs at request time; Redis
+and Celery checks are added when a synchronous feature depends on them.
 
 **Response** `200 OK`:
 ```json
 {
-  "success": true,
-  "data": {
-    "status": "healthy",
-    "version": "0.1.0",
-    "checks": {
-      "database": { "status": "up", "latency_ms": 2 },
-      "redis": { "status": "up", "latency_ms": 1 },
-      "celery": { "status": "up", "workers": 4 }
-    }
-  },
-  "error": null
+  "status": "ready",
+  "checks": {
+    "database": { "status": "up" }
+  }
 }
 ```
 
-If a dependency is down:
+If the database is down:
 ```json
 {
-  "success": true,
-  "data": {
-    "status": "degraded",
-    "version": "0.1.0",
-    "checks": {
-      "database": { "status": "up", "latency_ms": 2 },
-      "redis": { "status": "down", "error": "Connection refused" },
-      "celery": { "status": "down", "error": "No workers responding" }
-    }
-  },
-  "error": null
+  "status": "degraded",
+  "checks": {
+    "database": { "status": "down" }
+  }
 }
 ```
 
-Note: Returns `200` even when degraded (the health endpoint itself is working). Load balancers should check `data.status` field.
+Note: Returns `200` even when degraded (the health endpoint itself is working). Load balancers should check the `status` field.
 
 ---
 
