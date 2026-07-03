@@ -101,6 +101,29 @@ class DocumentModel(Base):
     )
 
 
+class QueryHistoryModel(Base):
+    """One past Q&A interaction (question, answer, and quality metrics)."""
+
+    __tablename__ = "query_history"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    model_used: Mapped[str] = mapped_column(String(100), nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+
 class DocumentChunkModel(Base):
     """One retrievable text chunk of a document, with its vector embedding."""
 

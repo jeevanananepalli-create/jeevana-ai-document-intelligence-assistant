@@ -16,6 +16,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.domain.entities.document import Document
+from app.domain.entities.query_record import QueryRecord
 
 
 class InMemoryDocumentRepository:
@@ -56,3 +57,24 @@ class InMemoryDocumentRepository:
 
     async def count_for_user(self, user_id: UUID) -> int:
         return sum(1 for doc in self._documents.values() if doc.user_id == user_id)
+
+
+class InMemoryQueryHistoryRepository:
+    """A dict-backed QueryHistoryRepository (tests / DB-free runs)."""
+
+    def __init__(self) -> None:
+        self._records: dict[UUID, QueryRecord] = {}
+
+    async def add(self, record: QueryRecord) -> QueryRecord:
+        self._records[record.id] = record
+        return record
+
+    async def list_for_user(
+        self, user_id: UUID, *, limit: int = 20, offset: int = 0
+    ) -> list[QueryRecord]:
+        owned = [rec for rec in self._records.values() if rec.user_id == user_id]
+        owned.sort(key=lambda rec: (rec.created_at, rec.id), reverse=True)
+        return owned[offset : offset + limit]
+
+    async def count_for_user(self, user_id: UUID) -> int:
+        return sum(1 for rec in self._records.values() if rec.user_id == user_id)
