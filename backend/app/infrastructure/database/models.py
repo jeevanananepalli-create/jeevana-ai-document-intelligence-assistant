@@ -20,6 +20,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -82,11 +83,14 @@ class DocumentModel(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'uploaded'"), index=True
     )
-    # Populated by later pipeline phases; null until then.
+    # Populated by the processing pipeline; null until then.
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # AI analysis fields (Phase 3); null until analysis has run.
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     document_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    entities: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    entities: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB, nullable=True)
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    analysis_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

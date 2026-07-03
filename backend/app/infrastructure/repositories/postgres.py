@@ -19,9 +19,30 @@ from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities.document import Document
+from app.domain.value_objects.document_analysis import DocumentAnalysis, ExtractedEntity
 from app.domain.value_objects.document_status import DocumentStatus
 from app.domain.value_objects.file_type import FileType
 from app.infrastructure.database.models import DocumentModel
+
+
+def _analysis_from_row(model: DocumentModel) -> DocumentAnalysis | None:
+    """Rebuild the DocumentAnalysis value object from its flattened columns.
+
+    A non-null summary is the marker that analysis has run — an analysis always
+    produces a summary, so the other fields are meaningless without one.
+    """
+    if model.summary is None:
+        return None
+    return DocumentAnalysis(
+        summary=model.summary,
+        document_type=model.document_type or "other",
+        language=model.language or "en",
+        confidence=model.analysis_confidence or 0.0,
+        entities=tuple(
+            ExtractedEntity(name=entity["name"], type=entity["type"])
+            for entity in (model.entities or [])
+        ),
+    )
 
 
 def _to_domain(model: DocumentModel) -> Document:
@@ -39,12 +60,26 @@ def _to_domain(model: DocumentModel) -> Document:
         extracted_text=model.extracted_text,
         page_count=model.page_count,
         processing_error=model.processing_error,
+        analysis=_analysis_from_row(model),
+    )
+
+
+def _apply_analysis(model: DocumentModel, analysis: DocumentAnalysis | None) -> None:
+    """Flatten the analysis value object onto the ORM row (in place)."""
+    model.summary = analysis.summary if analysis else None
+    model.document_type = analysis.document_type if analysis else None
+    model.language = analysis.language if analysis else None
+    model.analysis_confidence = analysis.confidence if analysis else None
+    model.entities = (
+        [{"name": entity.name, "type": entity.type} for entity in analysis.entities]
+        if analysis
+        else None
     )
 
 
 def _to_model(document: Document) -> DocumentModel:
     """Map a domain entity to a new ORM row."""
-    return DocumentModel(
+    model = DocumentModel(
         id=document.id,
         user_id=document.user_id,
         original_filename=document.original_filename,
@@ -58,6 +93,8 @@ def _to_model(document: Document) -> DocumentModel:
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
+    _apply_analysis(model, document.analysis)
+    return model
 
 
 class PostgresDocumentRepository:
@@ -104,6 +141,7 @@ class PostgresDocumentRepository:
         model.page_count = document.page_count
         model.processing_error = document.processing_error
         model.updated_at = document.updated_at
+        _apply_analysis(model, document.analysis)
         await self._session.flush()
         return document
 

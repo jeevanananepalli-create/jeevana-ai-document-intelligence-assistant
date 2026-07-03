@@ -31,6 +31,7 @@ from app.domain.exceptions import (
 )
 from app.domain.interfaces.queue import DocumentProcessingQueue
 from app.domain.interfaces.repositories import DocumentRepository
+from app.domain.value_objects.document_analysis import DocumentAnalysis
 from app.domain.value_objects.document_status import DocumentStatus
 from app.domain.value_objects.file_type import FileType
 
@@ -119,8 +120,25 @@ class PaginatedDocuments(BaseModel):
     has_next: bool
 
 
+class EntityResponse(BaseModel):
+    """One entity the AI analysis extracted."""
+
+    name: str
+    type: str
+
+
+class AnalysisResponse(BaseModel):
+    """The AI-derived analysis of a document."""
+
+    summary: str
+    document_type: str
+    language: str
+    confidence: float
+    entities: list[EntityResponse]
+
+
 class DocumentDetail(BaseModel):
-    """Full document detail, including extracted text once processed."""
+    """Full document detail, including extracted text and analysis once processed."""
 
     id: UUID
     original_filename: str
@@ -130,6 +148,7 @@ class DocumentDetail(BaseModel):
     page_count: int | None
     extracted_text: str | None
     processing_error: str | None
+    analysis: AnalysisResponse | None
     created_at: datetime
     updated_at: datetime
 
@@ -158,6 +177,18 @@ def _to_list_item(document: Document) -> DocumentListItem:
     )
 
 
+def _to_analysis(analysis: DocumentAnalysis | None) -> AnalysisResponse | None:
+    if analysis is None:
+        return None
+    return AnalysisResponse(
+        summary=analysis.summary,
+        document_type=analysis.document_type,
+        language=analysis.language,
+        confidence=analysis.confidence,
+        entities=[EntityResponse(name=e.name, type=e.type) for e in analysis.entities],
+    )
+
+
 def _to_detail(document: Document) -> DocumentDetail:
     return DocumentDetail(
         id=document.id,
@@ -168,6 +199,7 @@ def _to_detail(document: Document) -> DocumentDetail:
         page_count=document.page_count,
         extracted_text=document.extracted_text,
         processing_error=document.processing_error,
+        analysis=_to_analysis(document.analysis),
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
@@ -221,6 +253,33 @@ async def get_document_status(
     return DocumentStatusResponse(
         id=document.id, status=document.status, processing_error=document.processing_error
     )
+
+
+@router.get(
+    "/{document_id}/analysis",
+    response_model=AnalysisResponse,
+    summary="Get a document's AI analysis",
+)
+async def get_document_analysis(
+    document_id: UUID,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    repository: Annotated[DocumentRepository, Depends(get_document_repository)],
+) -> AnalysisResponse:
+    """Return the AI analysis (summary, entities, classification) for a document.
+
+    404 with distinct messages when the document does not exist versus when it
+    exists but has not been analyzed (still processing, analysis disabled, or
+    the LLM step failed).
+    """
+    document = await repository.get(document_id, user_id)
+    if document is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+    analysis = _to_analysis(document.analysis)
+    if analysis is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Analysis not available for this document yet"
+        )
+    return analysis
 
 
 @router.delete("/{document_id}", response_model=DeleteResponse, summary="Delete a document")

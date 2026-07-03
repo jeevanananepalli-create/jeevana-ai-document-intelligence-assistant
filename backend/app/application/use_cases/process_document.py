@@ -3,15 +3,21 @@
 This is the pipeline that the Celery worker runs:
 
     load record -> mark processing -> load file -> extract text -> chunk
-    -> embed chunks -> store chunks -> mark completed   (or mark failed)
+    -> embed chunks -> store chunks -> analyze (optional) -> mark completed
+    (or mark failed)
 
 It depends only on domain ports, so the whole pipeline is unit-testable with
-fakes — no Celery, Redis, database, or embedding model required to test the
+fakes — no Celery, Redis, database, embedding model, or LLM required to test the
 orchestration logic. The concrete adapters are wired in the Celery task.
+
+Analysis is deliberately best-effort: extraction and embeddings are the core
+product, the AI summary is an enrichment. If the LLM call fails (or no LLM is
+configured), the document still completes — the failure is logged, not raised.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -21,12 +27,16 @@ from app.domain.entities.document_chunk import DocumentChunk
 from app.domain.exceptions import DocumentNotFoundError
 from app.domain.interfaces.embeddings import EmbeddingPort
 from app.domain.interfaces.extraction import ExtractionStrategy
+from app.domain.interfaces.llm import LLMPort
 from app.domain.interfaces.repositories import ChunkRepository, DocumentRepository
 from app.domain.interfaces.storage import StoragePort
 from app.domain.services.text_chunker import TextChunker
+from app.domain.value_objects.document_analysis import DocumentAnalysis
 from app.domain.value_objects.document_status import DocumentStatus
 from app.domain.value_objects.file_type import FileType
 from app.infrastructure.extraction.factory import create_extraction_strategy
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -44,6 +54,8 @@ class ProcessDocumentUseCase:
         storage: StoragePort,
         embedder: EmbeddingPort,
         chunker: TextChunker,
+        analyzer: LLMPort | None = None,
+        analysis_max_chars: int = 100_000,
         strategy_factory: Callable[[FileType], ExtractionStrategy] = create_extraction_strategy,
         clock: Callable[[], datetime] = _utcnow,
     ) -> None:
@@ -52,6 +64,8 @@ class ProcessDocumentUseCase:
         self._storage = storage
         self._embedder = embedder
         self._chunker = chunker
+        self._analyzer = analyzer
+        self._analysis_max_chars = analysis_max_chars
         self._strategy_factory = strategy_factory
         self._clock = clock
 
@@ -98,8 +112,28 @@ class ProcessDocumentUseCase:
         if chunks:
             await self._chunks.add_chunks(chunks, embeddings)
 
-        return document.mark_completed(
+        completed = document.mark_completed(
             updated_at=self._clock(),
             extracted_text=result.text,
             page_count=result.page_count,
         )
+
+        analysis = await self._try_analyze(completed.id, result.text)
+        if analysis is not None:
+            completed = completed.with_analysis(analysis, updated_at=self._clock())
+        return completed
+
+    async def _try_analyze(self, document_id: UUID, text: str) -> DocumentAnalysis | None:
+        """Run AI analysis, treating any failure as 'no analysis' rather than error.
+
+        Extraction succeeded and the chunks are stored — the document is useful
+        even without a summary, so an LLM outage must not fail the pipeline.
+        """
+        if self._analyzer is None or not text.strip():
+            return None
+        try:
+            # Truncate very long documents so the prompt fits the context window.
+            return await self._analyzer.analyze_document(text[: self._analysis_max_chars])
+        except Exception:
+            logger.warning("AI analysis failed for document %s", document_id, exc_info=True)
+            return None

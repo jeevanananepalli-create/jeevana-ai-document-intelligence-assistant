@@ -32,13 +32,22 @@ from sqlalchemy import NullPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.application.use_cases.process_document import ProcessDocumentUseCase
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.domain.interfaces.llm import LLMPort
 from app.domain.services.text_chunker import TextChunker
 from app.infrastructure.external_services.embeddings import SentenceTransformerEmbedding
+from app.infrastructure.external_services.llm import OpenAILLM
 from app.infrastructure.repositories.postgres import PostgresDocumentRepository
 from app.infrastructure.repositories.postgres_chunk import PostgresChunkRepository
 from app.infrastructure.storage.local_storage import LocalFileStorage
 from app.workers.celery_app import celery_app
+
+
+def _build_analyzer(settings: Settings) -> LLMPort | None:
+    """AI analysis is optional: no API key means the pipeline skips the step."""
+    if not settings.openai_api_key:
+        return None
+    return OpenAILLM(api_key=settings.openai_api_key, model=settings.llm_model)
 
 
 @asynccontextmanager
@@ -79,6 +88,8 @@ async def _process(document_id: UUID, user_id: UUID, *, record_failure: bool) ->
                 settings.embedding_model, settings.embedding_dimension
             ),
             chunker=TextChunker(),
+            analyzer=_build_analyzer(settings),
+            analysis_max_chars=settings.analysis_max_chars,
         )
         try:
             await use_case.execute(document_id, user_id)

@@ -19,6 +19,7 @@ dependencies = [
     "psycopg2-binary>=2.9",   # sync driver used by Alembic migrations
     "pgvector>=0.3",          # SQLAlchemy Vector type + pgvector support
     "celery[redis]>=5.4",     # async task queue (worker pipeline) + Redis broker
+    "openai>=1.55",           # LLM document analysis via structured output
     "alembic>=1.13",
     "bcrypt>=4.2",            # password hashing
     "pyjwt>=2.9",            # JWT encode/decode

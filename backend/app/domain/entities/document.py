@@ -18,6 +18,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.domain.exceptions import InvalidStatusTransitionError
+from app.domain.value_objects.document_analysis import DocumentAnalysis
 from app.domain.value_objects.document_status import DocumentStatus
 from app.domain.value_objects.file_type import FileType
 
@@ -39,6 +40,8 @@ class Document:
     extracted_text: str | None = None
     page_count: int | None = None
     processing_error: str | None = None
+    # AI analysis (summary, entities, classification); None until analyzed.
+    analysis: DocumentAnalysis | None = None
 
     def with_status(
         self,
@@ -97,3 +100,13 @@ class Document:
             updated_at=updated_at,
             processing_error=error,
         )
+
+    def with_analysis(self, analysis: DocumentAnalysis, *, updated_at: datetime) -> Document:
+        """Return a copy carrying AI analysis results.
+
+        No status transition is involved: analysis is an enrichment, not a
+        lifecycle step. This is also what a future re-analyze flow calls to
+        overwrite stale results (idempotent by construction — it replaces,
+        never appends).
+        """
+        return replace(self, analysis=analysis, updated_at=updated_at)

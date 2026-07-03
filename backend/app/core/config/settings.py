@@ -146,6 +146,24 @@ class Settings(BaseSettings):
         description="Vector width the embedding model produces (must match the DB column).",
     )
 
+    # --- AI analysis (Phase 3) ---------------------------------------------
+    # Analysis is optional: when no API key is configured, the pipeline simply
+    # skips the analysis step and documents complete without a summary.
+    openai_api_key: str | None = Field(
+        default=None,
+        description="OpenAI API key. Leave unset to disable AI analysis.",
+    )
+    llm_model: str = Field(
+        default="gpt-4o-mini",
+        description="OpenAI model used for document analysis.",
+    )
+    analysis_max_chars: int = Field(
+        default=100_000,
+        ge=1_000,
+        description="Extracted text beyond this length is truncated before analysis "
+        "to stay within the model's context window.",
+    )
+
     @property
     def max_file_size_bytes(self) -> int:
         """The max upload size expressed in bytes, for direct length checks."""
