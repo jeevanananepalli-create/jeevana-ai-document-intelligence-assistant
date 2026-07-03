@@ -41,7 +41,12 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      # Since Phase 4, the API itself embeds search/Q&A queries, so it needs the
+      # same embedding model as the worker.
+      args:
+        INSTALL_ML: "true"
     # Load non-secret defaults from .env, then override the hosts: inside the
     # compose network, services are reachable by their service name, not localhost.
     env_file:
