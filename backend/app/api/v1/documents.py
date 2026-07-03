@@ -11,7 +11,15 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 
 from app.api.deps import (
@@ -57,6 +65,7 @@ class UploadResponse(BaseModel):
 )
 async def upload_document(
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     use_case: Annotated[UploadDocumentUseCase, Depends(get_upload_document_use_case)],
     queue: Annotated[DocumentProcessingQueue, Depends(get_processing_queue)],
@@ -82,8 +91,12 @@ async def upload_document(
     except EmptyFileError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
-    # Hand off the slow work (extract/chunk/embed) to the worker.
-    queue.enqueue(document.id, user_id)
+    # Hand off the slow work (extract/chunk/embed) to the worker VIA a background
+    # task, not directly. Ordering matters: the DB session commits when the
+    # request's dependencies tear down, and FastAPI runs background tasks AFTER
+    # that teardown — so the worker can never pick up the job before the document
+    # row is committed. Enqueuing inline here would race the commit.
+    background_tasks.add_task(queue.enqueue, document.id, user_id)
 
     return UploadResponse(
         id=document.id,
