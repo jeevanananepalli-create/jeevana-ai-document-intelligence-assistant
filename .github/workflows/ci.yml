@@ -65,6 +65,9 @@ jobs:
       - name: Type check (mypy)
         run: mypy app
 
+      - name: Security scan (bandit)
+        run: bandit -r app -q
+
       - name: Apply database migrations
         # Validates the Alembic migration applies cleanly to a real database.
         run: alembic upgrade head

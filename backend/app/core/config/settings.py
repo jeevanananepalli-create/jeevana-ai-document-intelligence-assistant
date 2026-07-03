@@ -36,7 +36,10 @@ class Environment(StrEnum):
 # development, but it is public knowledge (it lives in the repo), so it must
 # never be used to sign real tokens. Settings validation below refuses to start
 # in production while this value is in use.
-DEFAULT_JWT_SECRET_KEY = "change-me-to-a-random-secret-in-production"
+# Suppressed bandit B105 (hardcoded password): this is deliberately a PUBLIC
+# placeholder, not a secret — the model_validator below refuses to start in
+# production while it is still in use.
+DEFAULT_JWT_SECRET_KEY = "change-me-to-a-random-secret-in-production"  # nosec B105
 
 
 class Settings(BaseSettings):
