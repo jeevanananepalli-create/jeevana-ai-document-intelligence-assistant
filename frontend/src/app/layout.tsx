@@ -1,10 +1,3 @@
-/**
- * Root layout.
- *
- * In the Next.js App Router, `layout.tsx` wraps every page. It renders the
- * <html>/<body> shell and shared chrome (here, a simple nav). Page content is
- * injected as `children`.
- */
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
@@ -20,13 +13,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <nav>
-          <Link href="/">Home</Link>
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/documents">Documents</Link>
-          <Link href="/chat">Chat</Link>
-        </nav>
-        <main>{children}</main>
+        <div className="site-shell">
+          <nav className="top-nav" aria-label="Main navigation">
+            <Link href="/">Home</Link>
+            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/documents">Documents</Link>
+            <Link href="/search">Search</Link>
+            <Link href="/chat">Chat</Link>
+          </nav>
+          <main>{children}</main>
+        </div>
       </body>
     </html>
   );

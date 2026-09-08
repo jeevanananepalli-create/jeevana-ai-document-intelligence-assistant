@@ -6,10 +6,11 @@ An AI-powered document processing platform that extracts, analyzes, and enables 
 
 ## Project Status
 
-**Current phase: Phase 4 — Semantic Search & RAG Q&A ✅ complete. Next: Phase 5 (frontend dashboard).**
+**Current phase: Phase 5 — Frontend dashboard and document intelligence UI ✅ complete.**
 
-Verified end to end (lint + type-check + security scan + 152 tests green, incl.
-real PostgreSQL/pgvector integration tests). See the
+The backend and frontend are implemented as a complete local development
+workflow. Backend verification includes lint, type-check, security scan, and
+152 tests, including real PostgreSQL/pgvector integration tests. See the
 [development roadmap](docs/development-roadmap.md) for the phased plan.
 
 | Capability | Status |
@@ -26,12 +27,11 @@ real PostgreSQL/pgvector integration tests). See the
 | Semantic search (`POST /search`, pgvector cosine similarity) | ✅ |
 | RAG Q&A with citations (`POST /qa/ask`) + query history | ✅ (needs `OPENAI_API_KEY`) |
 | Auth login/register flow | ⏳ deferred feature |
-| Frontend feature UI | ⏳ Phase 5 |
+| Frontend dashboard, document library, detail views, search, and chat | ✅ |
 
 ## Features
 
-> The features below describe the **target** product. Items are delivered phase
-> by phase; upload, extraction, the processing pipeline, and retrieval are done.
+The current product includes the following capabilities:
 
 
 
@@ -42,13 +42,15 @@ real PostgreSQL/pgvector integration tests). See the
 - **Document Q&A**: Ask natural language questions and get answers with source citations (RAG pipeline)
 - **REST API**: Versioned API with JWT authentication and OpenAPI documentation
 - **Web Dashboard**: Next.js frontend for document management, search, and chat
+- **Document Detail Views**: Inspect processing status, extracted text, AI analysis, and entities
+- **Responsive UI**: Accessible, responsive layouts for desktop and mobile screens
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
 │              Next.js Frontend               │
-│        (Dashboard, Documents, Chat)         │
+│  (Dashboard, Documents, Search, Chat)       │
 └──────────────────┬──────────────────────────┘
                    │ REST API
 ┌──────────────────▼──────────────────────────┐
@@ -136,7 +138,7 @@ docker compose up
 │   └── Dockerfile
 ├── frontend/
 │   └── src/
-│       ├── app/                # Next.js App Router pages (/, dashboard, documents, chat)
+│       ├── app/                # Next.js App Router pages (/, dashboard, documents, search, chat)
 │       ├── components/         # UI components
 │       ├── lib/                # API client (lib/api.ts)
 │       └── types/              # TypeScript types
@@ -207,8 +209,12 @@ npm install
 npm run dev                   # http://localhost:3000
 npm test                      # component tests
 npm run lint                  # lint
+npm run type-check            # TypeScript validation
 npm run build                 # production build
 ```
+
+The frontend expects the backend API at `http://localhost:8000` by default. To
+use another API host, set `NEXT_PUBLIC_API_URL` in `frontend/.env.local`.
 
 > Tooling note: the backend uses **ruff** (lint + format) and **mypy** (types);
 > CI runs all of these on every push. `uv` is an optional faster alternative to
