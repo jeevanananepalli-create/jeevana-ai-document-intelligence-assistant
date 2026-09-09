@@ -34,7 +34,12 @@ ARG INSTALL_ML=false
 COPY pyproject.toml README.md ./
 COPY app ./app
 RUN pip install --upgrade pip \
-    && if [ "$INSTALL_ML" = "true" ]; then pip install ".[ml]"; else pip install "."; fi
+    && if [ "$INSTALL_ML" = "true" ]; then \
+         pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.5.1+cpu" \
+         && pip install ".[ml]"; \
+       else \
+         pip install "."; \
+       fi
 
 # ---- Stage 2: runtime -----------------------------------------------------
 FROM python:3.12-slim AS runtime
@@ -63,6 +68,10 @@ COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 COPY migrations ./migrations
 COPY alembic.ini ./
+
+# Ensure the named upload volume is writable by the non-root runtime user.
+RUN mkdir -p /app/uploads \
+    && chown -R 1000:1000 /app/uploads
 
 # Run as a non-root user — a basic, important security hardening step so a
 # compromised process does not have root inside the container.

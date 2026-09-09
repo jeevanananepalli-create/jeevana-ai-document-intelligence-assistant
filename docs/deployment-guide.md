@@ -30,8 +30,12 @@ quickly.
 ```bash
 # 1. Copy the environment template and adjust values if needed
 cp .env.example .env
+# 2. For key-free local AI, install Ollama and download a model:
+#    ollama pull llama3.2:3b
+#    Then set LLM_PROVIDER=ollama in `.env`.
+#    For OpenAI instead, set LLM_PROVIDER=openai and OPENAI_API_KEY.
 
-# 2. Start PostgreSQL + the backend together
+# 3. Start PostgreSQL + Redis + the API + the worker
 docker compose up --build
 ```
 
@@ -46,6 +50,12 @@ What you get:
 The backend container waits for the database's health check to pass before
 starting, so you never see connection errors from a database that isn't ready
 yet.
+
+The selected LLM provider and model are loaded into both the API and Celery
+worker through Compose's `.env` file. For Ollama, the default local endpoint is
+`http://localhost:11434`; Compose overrides this to
+`http://host.docker.internal:11434` so containers can reach Ollama on Windows
+or macOS. Never commit `.env` or place a real API key in `.env.example`.
 
 ### Option B — Backend without Docker
 

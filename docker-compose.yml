@@ -55,6 +55,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/docintell
       DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/docintell
       REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     ports:
       - "8000:8000"
     depends_on:
@@ -79,6 +80,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/docintell
       DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/docintell
       REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     depends_on:
       db:
         condition: service_healthy

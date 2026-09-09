@@ -71,8 +71,8 @@ export interface QaResponse {
   latency_ms: number;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+async function request<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
@@ -85,11 +85,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestV1<T>(path: string, init?: RequestInit): Promise<T> {
-  return request<T>(`${API_V1_BASE_URL}${path}`, init);
+  return request<T>(API_V1_BASE_URL, path, init);
 }
 
 export const api = {
-  getHealth: (): Promise<HealthResponse> => request<HealthResponse>("/health"),
+  getHealth: (): Promise<HealthResponse> => request<HealthResponse>(API_BASE_URL, "/health"),
 
   listDocuments: (): Promise<PaginatedDocuments> =>
     requestV1<PaginatedDocuments>("/documents"),

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -150,15 +151,21 @@ class Settings(BaseSettings):
     )
 
     # --- AI analysis (Phase 3) ---------------------------------------------
-    # Analysis is optional: when no API key is configured, the pipeline simply
-    # skips the analysis step and documents complete without a summary.
+    llm_provider: Literal["openai", "ollama"] = Field(
+        default="openai",
+        description="LLM provider used for analysis and Q&A.",
+    )
     openai_api_key: str | None = Field(
         default=None,
-        description="OpenAI API key. Leave unset to disable AI analysis.",
+        description="OpenAI API key, required when LLM_PROVIDER=openai.",
     )
     llm_model: str = Field(
         default="gpt-4o-mini",
-        description="OpenAI model used for document analysis.",
+        description="Model name used by the selected LLM provider.",
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Base URL of the Ollama server.",
     )
     analysis_max_chars: int = Field(
         default=100_000,

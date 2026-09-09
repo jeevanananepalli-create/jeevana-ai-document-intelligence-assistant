@@ -95,7 +95,10 @@ cd document-intelligence-assistant
 
 # Copy environment variables
 cp .env.example .env
-# Defaults work for local dev; no API keys needed for Phase 2
+# For key-free local AI, install Ollama and run:
+# ollama pull llama3.2:3b
+# Then set LLM_PROVIDER=ollama in `.env`.
+# Alternatively, set LLM_PROVIDER=openai and OPENAI_API_KEY for OpenAI.
 
 # Start the backend stack: PostgreSQL, Redis, the API, and the Celery worker
 docker compose up
@@ -104,6 +107,13 @@ docker compose up
 # API Docs:     http://localhost:8000/docs
 # (the Next.js frontend is run separately — see Development below)
 ```
+
+When `LLM_PROVIDER=ollama`, the Celery worker and API call the local Ollama
+server using `LLM_MODEL` (`llama3.2:3b` in the template). When using Docker,
+Compose routes Ollama through `http://host.docker.internal:11434`. Set
+`LLM_PROVIDER=openai`, `LLM_MODEL=gpt-4o-mini`, and `OPENAI_API_KEY` to use
+OpenAI instead. Without a configured provider, extraction and embeddings still
+run, but AI analysis is skipped and Q&A returns `503 Service Unavailable`.
 
 ## Project Structure
 

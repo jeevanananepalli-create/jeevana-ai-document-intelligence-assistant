@@ -32,6 +32,7 @@ from app.domain.interfaces.storage import StoragePort
 from app.infrastructure.database.session import get_db
 from app.infrastructure.external_services.embeddings import SentenceTransformerEmbedding
 from app.infrastructure.external_services.llm import OpenAILLM
+from app.infrastructure.external_services.ollama import OllamaLLM
 from app.infrastructure.repositories.postgres import PostgresDocumentRepository
 from app.infrastructure.repositories.postgres_chunk import PostgresChunkRepository
 from app.infrastructure.repositories.postgres_query_history import (
@@ -76,15 +77,17 @@ def get_embedder() -> EmbeddingPort:
 
 
 def get_llm() -> LLMPort:
-    """The configured LLM, or 503 if AI features are not configured.
+    """Return the configured LLM, or 503 if OpenAI is not configured.
 
     Q&A cannot work without a model; a clear 503 beats a confusing crash.
     """
     settings = get_settings()
+    if settings.llm_provider == "ollama":
+        return OllamaLLM(base_url=settings.ollama_base_url, model=settings.llm_model)
     if not settings.openai_api_key:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Q&A is not available: no LLM is configured (set OPENAI_API_KEY).",
+            "Q&A is not available: set OPENAI_API_KEY or switch to LLM_PROVIDER=ollama.",
         )
     return OpenAILLM(api_key=settings.openai_api_key, model=settings.llm_model)
 

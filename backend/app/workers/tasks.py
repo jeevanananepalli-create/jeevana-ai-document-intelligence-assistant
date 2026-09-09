@@ -37,6 +37,7 @@ from app.domain.interfaces.llm import LLMPort
 from app.domain.services.text_chunker import TextChunker
 from app.infrastructure.external_services.embeddings import SentenceTransformerEmbedding
 from app.infrastructure.external_services.llm import OpenAILLM
+from app.infrastructure.external_services.ollama import OllamaLLM
 from app.infrastructure.repositories.postgres import PostgresDocumentRepository
 from app.infrastructure.repositories.postgres_chunk import PostgresChunkRepository
 from app.infrastructure.storage.local_storage import LocalFileStorage
@@ -44,7 +45,9 @@ from app.workers.celery_app import celery_app
 
 
 def _build_analyzer(settings: Settings) -> LLMPort | None:
-    """AI analysis is optional: no API key means the pipeline skips the step."""
+    """Build the selected analyzer; OpenAI stays optional when no key is set."""
+    if settings.llm_provider == "ollama":
+        return OllamaLLM(base_url=settings.ollama_base_url, model=settings.llm_model)
     if not settings.openai_api_key:
         return None
     return OpenAILLM(api_key=settings.openai_api_key, model=settings.llm_model)
