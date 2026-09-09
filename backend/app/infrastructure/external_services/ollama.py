@@ -11,8 +11,8 @@ from app.domain.value_objects.document_analysis import DocumentAnalysis, Extract
 from app.domain.value_objects.search import RagAnswer
 from app.infrastructure.external_services.llm import (
     _ANALYSIS_SYSTEM_PROMPT,
-    _AnalysisSchema,
     _QA_SYSTEM_PROMPT,
+    _AnalysisSchema,
     _RagAnswerSchema,
     format_context_passages,
 )
